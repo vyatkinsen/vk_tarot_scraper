@@ -117,7 +117,7 @@ def fetch_profiles(group_id: int, total: int) -> List[Dict[str, Any]]:
                 bar.update(len(got))
             except RuntimeError as e:
                 if "error 15" in str(e):
-                    bar.set_description("⚠️ доступ закрыт")
+                    bar.set_description("!!!Доступ закрыт!!!")
                     break
                 raise
     return profiles
@@ -125,7 +125,7 @@ def fetch_profiles(group_id: int, total: int) -> List[Dict[str, Any]]:
 
 def send_chunks(group_id: int, profiles: List[Dict[str, Any]], ts_iso: str) -> None:
     if not profiles:
-        print("⚠️ Нет профилей для отправки")
+        print("!!!Нет профилей для отправки!!!")
         return
 
     chunks = size_limited_chunks(profiles, MAX_KAFKA_MSG_BYTES)
@@ -147,12 +147,12 @@ def send_chunks(group_id: int, profiles: List[Dict[str, Any]], ts_iso: str) -> N
             raise
         count = idx + 1
     PRODUCER.flush()
-    print(f"✅ Отправлено {count} сообщений (всего {len(profiles)} профилей)")
+    print(f"Отправлено {count} сообщений (всего {len(profiles)} профилей)")
 
 
 def main() -> None:
     if not ACCESS_TOKEN:
-        print("❌ Нет VK access_token", file=sys.stderr)
+        print("!!!Нет VK access_token!!!", file=sys.stderr)
         sys.exit(1)
 
     ts_iso = datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -160,14 +160,14 @@ def main() -> None:
     try:
         groups = search_groups(GROUPS_LIMIT)
         if not groups:
-            print("❗️ Группы не найдены — выходим")
+            print("!!!Группы не найдены!!!")
             return
 
         for idx, gid in enumerate(groups, 1):
             print(f"\n[{idx}/{len(groups)}] группа {gid}")
             total = safe_total(gid)
             if total is None:
-                print("⚠️ Список участников скрыт — пропуск")
+                print("!!!Список участников скрыт!!!")
                 continue
 
             print(f"    Всего участников: {total}")
@@ -177,9 +177,9 @@ def main() -> None:
             send_chunks(gid, profiles, ts_iso)
 
     except KeyboardInterrupt:
-        print("\n⏹️  Остановлено пользователем")
+        print("\nОстановлено пользователем")
     except Exception as exc:
-        print("\n❌ Ошибка:", exc, file=sys.stderr)
+        print("\n!!!Ошибка:!!!", exc, file=sys.stderr)
         sys.exit(1)
 
 
