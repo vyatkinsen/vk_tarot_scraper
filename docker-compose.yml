@@ -1,30 +1,125 @@
 services:
+  zookeeper:
+    image: bitnami/zookeeper:3.9
+    environment:
+      ALLOW_ANONYMOUS_LOGIN: "yes"
+    ports:
+      - "2181:2181"
+    networks: ["backend"]
+
+  kafka:
+    image: bitnami/kafka:3.7
+    depends_on: ["zookeeper"]
+    environment:
+      KAFKA_CFG_BROKER_ID: 1
+      KAFKA_CFG_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_CFG_LISTENERS: PLAINTEXT://:9092
+      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      ALLOW_PLAINTEXT_LISTENER: "yes"
+    ports:
+      - "9092:9092"
+    volumes:
+      - kafka_data:/bitnami/kafka
+    networks: ["backend"]
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    depends_on: ["kafka"]
+    environment:
+      KAFKA_CLUSTERS_0_NAME: "local"
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+    ports:
+      - "9000:8080"
+    networks: ["backend"]
+
+  mongodb:
+    image: mongo:6.0
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: supersecret
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    networks: ["backend"]
+
+  mongo-express:
+    image: mongo-express:latest
+    depends_on: ["mongodb"]
+    environment:
+      ME_CONFIG_MONGODB_SERVER: mongodb
+      ME_CONFIG_MONGODB_ADMINUSERNAME: admin
+      ME_CONFIG_MONGODB_ADMINPASSWORD: supersecret
+    ports:
+      - "8081:8081"
+    networks: ["backend"]
+
+  vk-scraper:
+    build:
+      context: ./vk_scraper
+      dockerfile: Dockerfile
+    env_file:
+      - ./vk_scraper/.env
+    depends_on:
+      - kafka
+    networks: ["backend"]
+
+  db-service:
+    build:
+      context: ./db_service
+      dockerfile: Dockerfile
+    depends_on:
+      - kafka
+      - mongodb
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KAFKA_TOPIC: vk_users
+      MONGO_URI: mongodb://admin:supersecret@mongodb:27017/
+      MONGO_DB: Database
+      MONGO_COLLECTION: vk_users
+    networks: ["backend"]
+
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.13.4
-    container_name: elasticsearch
     environment:
       - discovery.type=single-node
       - xpack.security.enabled=false
       - ES_JAVA_OPTS=-Xms1g -Xmx1g
     ports:
       - "9200:9200"
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+    networks: ["backend"]
 
   logstash:
     build:
-      context: .
-      dockerfile: Dockerfile-logstash
-    volumes:
-      - ./logstash.conf:/usr/share/logstash/pipeline/logstash.conf
-      - ./logstash-mongodb:/opt/logstash-mongodb
+      context: ./logstash-mongodb
+      dockerfile: Dockerfile
     depends_on:
       - elasticsearch
+      - mongodb
+    environment:
+      MONGO_URI: "mongodb://admin:supersecret@mongodb:27017/Database?authSource=admin"
+    volumes:
+      - ./logstash.conf:/usr/share/logstash/pipeline/logstash.conf:ro
+      - ./logstash-mongodb:/opt/logstash-mongodb
+    networks: ["backend"]
 
   kibana:
     image: docker.elastic.co/kibana/kibana:8.13.4
-    container_name: kibana
+    depends_on:
+      - elasticsearch
     ports:
       - "5601:5601"
     environment:
       - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
-    depends_on:
-      - elasticsearch
+    networks: ["backend"]
+
+volumes:
+  kafka_data:
+  mongo_data:
+  es_data:
+
+networks:
+  backend:
+    driver: bridge
